@@ -1,47 +1,41 @@
 # frozen_string_literal: true
 
+require "cgi"
 require_relative "../models/item"
+require_relative "./common"
 
 module InstacartApi
   module Search
-    def search(term:, store: default_store)
-      @term_query = URI.encode(term)
-      @store = store
-      @items = []
-      @page = 1
+    include Common
 
-      data_json = fetch_items
-      total_pages = data_json.dig("pagination", "total_pages")
+    def search(term:, store: default_store, department: nil)
+      total_pages = total_pages(term: term, store: store, dept: department)
 
-      while @page < total_pages
-        @page += 1
-        fetch_items
-      end
+      (1..total_pages).map do |page|
+        data = perform_search(
+          term: term, store: store, page: page, dept: department
+        )
 
-      @items
+        data.fetch("items").map { |item_json| Item.new(item_json) }
+      end.flatten
     end
 
     private
 
-    def fetch_items
-      response = get(
-        url: "v3/containers/#{@store}/search_v3/#{@term_query}" \
-             "?per=40&page=#{@page}"
-      )
+    def perform_search(term:, store:, page: 1, dept: nil)
+      term_query = CGI.escape term
 
-      data_json = data_json(response: response)
-      data_json.fetch("items").map do |item_json|
-        @items << Item.new(item_json)
-      end
+      url = "v3/containers/#{store}/search_v3/#{term_query}?per=40&page=#{page}"
+      url += "&dept_id=#{dept.id}" if dept
 
-      data_json
+      response = get(url: url)
+
+      data_json(response: response, key: "search_result_set_")
     end
 
-    def data_json(response:)
-      json_body = JSON.parse(response.body)
-      json_body.dig("container", "modules").find do |mod|
-        mod["id"] =~ /search_result_set_/
-      end.fetch("data")
+    def total_pages(term:, store:, dept: nil)
+      data_json = perform_search(term: term, store: store, dept: dept)
+      data_json.dig("pagination", "total_pages")
     end
   end
 end
