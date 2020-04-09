@@ -6,6 +6,7 @@ require "net/http"
 require "uri"
 
 require_relative "./instacart_api/actions/add_item_to_cart.rb"
+require_relative "./instacart_api/actions/cart_manager.rb"
 require_relative "./instacart_api/actions/department_manager.rb"
 require_relative "./instacart_api/actions/search.rb"
 
@@ -14,8 +15,9 @@ module InstacartApi
 
   class Client
     include AddItemToCart
-    include Search
+    include CartManager
     include DepartmentManager
+    include Search
 
     BASE_DOMAIN = "https://www.instacart.com"
     REQ_OPTIONS = { use_ssl: true }.freeze
@@ -42,6 +44,15 @@ module InstacartApi
       request.body = JSON.dump(payload)
 
       perform_request(uri: uri, request: request)
+    end
+
+    def cart
+      current_cart(cart_id: cart_id)
+    end
+
+    def cart_id
+      @cart_id ||=
+        JSON.parse(login_response.body).dig("data", "bootstrap_cart", "id")
     end
 
     private
